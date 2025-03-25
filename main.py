@@ -1,4 +1,5 @@
 import datetime
+import threading
 import requests
 import pandas
 import json
@@ -58,7 +59,7 @@ def download_game_icon(game_name, app_id, hash):
     response = requests.get(url)
 
     if response.status_code == 200:
-        with open(f"outputs/{game_name}/GameIcon.jpg", "wb") as f:
+        with open(f"outputs/{app_id}/GameIcon.jpg", "wb") as f:
             f.write(response.content)
     else:
         print(f"\t\tFailted to fetch game icon for {game_name}")
@@ -70,14 +71,14 @@ def download_achievement_icon(game_name, app_id, hashs):
 
         # Check if achievement icon has downloaded
         # TODO: Deprecated achievement icons clean up
-        if os.path.exists(f"outputs/{game_name}/AchievementIcons/{hash}.jpg"):
+        if os.path.exists(f"outputs/{app_id}/AchievementIcons/{hash}.jpg"):
             continue
 
         url = f"https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/{app_id}/{hash}.jpg"
         response = requests.get(url)
 
         if response.status_code == 200:
-            with open(f"outputs/{game_name}/AchievementIcons/{hash}.jpg", "wb") as f:
+            with open(f"outputs/{app_id}/AchievementIcons/{hash}.jpg", "wb") as f:
                 f.write(response.content)
         else:
             print(f"\t\tFailted to fetch achievement icon for {game_name} with hash {hash}")
@@ -93,14 +94,13 @@ games = list(filter(lambda x: x["playtime_forever"] > played_minutes_threshold, 
 games.sort(key=lambda x: x["playtime_forever"], reverse=True)
 print(f"Found {len(games)} games played over {played_minutes_threshold} minutes.")
 
-games = games[:2]
 for game in games:
     app_id = game["appid"]
     game_name = game["name"]
     print(f"\tProcessing {game_name}")
 
-    if not os.path.exists(f"outputs/{game_name}"):
-        os.mkdir(f"outputs/{game_name}")
+    if not os.path.exists(f"outputs/{app_id}"):
+        os.mkdir(f"outputs/{app_id}")
     
     print(f"\tProcessing game icon for {game_name}...")
     download_game_icon(game_name, app_id, game["img_icon_url"])
@@ -123,8 +123,8 @@ for game in games:
     merged = pandas.merge(pdAP, pdIconList, how="left", left_on="apiname", right_on="name")
     merged["iconHash"] = merged["icon"].apply(lambda icon: icon.split("/")[-1].split(".")[0] if isinstance(icon, str) else None)
     merged["icongrayHash"] = merged["icongray"].apply(lambda icongray: icongray.split("/")[-1].split(".")[0] if isinstance(icongray, str) else None)
-    merged = merged.drop(columns=["name_x", "name_y", "defaultvalue", "description_y", "icon", "icongray"])
-    merged.rename(columns={"description_x": "description"}, inplace=True)
+    merged = merged.drop(columns=["name_x", "name_y", "defaultvalue", "description_y", "icon", "icongray"], errors="ignore")
+    merged.rename(columns={"description_x": "description"}, inplace=True, errors="ignore")
     achievement_details = merged.to_dict(orient="records")
 
     print(f"\tFound {len(achievement_details)} achievements for {game_name}")
@@ -138,20 +138,27 @@ for game in games:
             merged[f"description_{languages_code[language]}"] = achievements_tmp["description"]
             merged[f"displayName_{languages_code[language]}"] = achievements_tmp["name"]
 
-    if not os.path.exists(f"outputs/{game_name}/AchievementIcons"):
-        os.mkdir(f"outputs/{game_name}/AchievementIcons")
+    if not os.path.exists(f"outputs/{app_id}/AchievementIcons"):
+        os.mkdir(f"outputs/{app_id}/AchievementIcons")
 
     print(f"\tProcessing achievement icons for {game_name}...")
-    # TODO: Use threading to make downloading icon faster
-    download_achievement_icon(game_name, app_id, merged["iconHash"].tolist() + merged["icongrayHash"].tolist())
-
-    merged.to_json(f"outputs/{game_name}/Achievements.json", orient="records", indent=4, force_ascii=False)
-    merged.to_csv(f"outputs/{game_name}/Achievements.csv", index=False)
+    icon_hashes = merged["iconHash"].tolist() + merged["icongrayHash"].tolist()
+    splitted_icon_hashes = [icon_hashes[i:i + icon_threading_size] for i in range(0, len(icon_hashes), icon_threading_size)]
+    threads = []
+    for hashes in splitted_icon_hashes:
+        t = threading.Thread(target=download_achievement_icon, args=(game_name, app_id, hashes))
+        threads.append(t)
+        t.start()
+    for t in threads:
+        t.join()
+    
+    merged.to_json(f"outputs/{app_id}/Achievements.json", orient="records", indent=4, force_ascii=False)
+    merged.to_csv(f"outputs/{app_id}/Achievements.csv", index=False)
 
     print(f"\tFinished getting data for {game_name}\n\n")
 
 games_info = pandas.DataFrame(games)\
-    .drop(columns=["has_community_visible_stats", "playtime_windows_forever", "playtime_mac_forever", "playtime_linux_forever", "playtime_deck_forever", "playtime_disconnected", "content_descriptorids"])
+    .drop(columns=["has_community_visible_stats", "playtime_windows_forever", "playtime_mac_forever", "playtime_linux_forever", "playtime_deck_forever", "playtime_disconnected", "content_descriptorids", "has_leaderboards"], errors="ignore")
 
 # Check if we have previous data
 if os.path.exists(f"outputs/GamesInfo.json"):

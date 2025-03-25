@@ -39,3 +39,4 @@ languages_code = {
 }
 
 played_minutes_threshold = 120
+icon_threading_size = 10
