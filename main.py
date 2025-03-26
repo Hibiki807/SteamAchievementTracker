@@ -7,6 +7,7 @@ import json
 import os
 
 from config import *
+from log import logger
 
 
 def get_player_achievements(app_id, language):
@@ -54,7 +55,7 @@ def get_achievement_icon_urls(app_id):
 
 
 def download_game_icon(game_name, app_id, hash):
-    # print(f"\t\t{app_id} - Downloading game icon for {game_name} with hash {hash}")
+    # logger.info(f"{app_id} - Downloading game icon for {game_name} with hash {hash}")
 
     url = f"http://media.steampowered.com/steamcommunity/public/images/apps/{app_id}/{hash}.jpg"
     response = requests.get(url)
@@ -63,16 +64,19 @@ def download_game_icon(game_name, app_id, hash):
         with open(f"outputs/{app_id}/GameIcon.jpg", "wb") as f:
             f.write(response.content)
     else:
-        print(f"\t\t{app_id} - Failted to fetch game icon for {game_name}")
+        logger.error(f"{app_id} - Failted to fetch game icon for {game_name}")
 
 
 def download_achievement_icon(game_name, app_id, hashs):
     for hash in hashs:
-        # print(f"\t\t{app_id} - Downloading achievement icon for {game_name} with {hash}")
+        # logger.info(f"{app_id} - Downloading achievement icon for {game_name} with {hash}")
 
         # Check if achievement icon has downloaded
         # TODO: Deprecated achievement icons clean up
         if os.path.exists(f"outputs/{app_id}/AchievementIcons/{hash}.jpg"):
+            continue
+        if hash is None or len(hash) == 0 or str.isspace(hash):
+            logger.warning(f"{app_id} - Achievement icon for {game_name} with hash {hash} is invalid")
             continue
 
         url = f"https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/{app_id}/{hash}.jpg"
@@ -82,7 +86,7 @@ def download_achievement_icon(game_name, app_id, hashs):
             with open(f"outputs/{app_id}/AchievementIcons/{hash}.jpg", "wb") as f:
                 f.write(response.content)
         else:
-            print(f"\t\t{app_id} - Failted to fetch achievement icon for {game_name} with hash {hash}")
+            logger.error(f"{app_id} - Failted to fetch achievement icon for {game_name} with hash {hash}")
 
 
 # TODO: Add log for exception
@@ -91,19 +95,19 @@ def process_games(games):
         try:
             app_id = game["appid"]
             game_name = game["name"]
-            print(f"\t{app_id} - Processing {game_name}")
+            logger.info(f"{app_id} - Processing {game_name}")
 
             if not os.path.exists(f"outputs/{app_id}"):
                 os.mkdir(f"outputs/{app_id}")
             
-            print(f"\t{app_id} - Processing game icon for {game_name}...")
+            logger.info(f"{app_id} - Processing game icon for {game_name}...")
             download_game_icon(game_name, app_id, game["img_icon_url"])
 
             # Get achievements data. If percentage returns empty, means this game has no achievement
-            print(f"\t{app_id} - Processing achievements data for {game_name}...")
+            logger.info(f"{app_id} - Processing achievements data for {game_name}...")
             percentages = get_achievement_percentages(app_id)
             if percentages is None or len(percentages) == 0:
-                print(f"\t\t{app_id} - No achievements found.")
+                logger.info(f"{app_id} - No achievements found for {game_name}.")
                 continue
             achievements = get_player_achievements(app_id, "english")
             icon_list = get_achievement_icon_urls(app_id)
@@ -121,12 +125,12 @@ def process_games(games):
             merged.rename(columns={"description_x": "description"}, inplace=True, errors="ignore")
             achievement_details = merged.to_dict(orient="records")
 
-            print(f"\t{app_id} - Found {len(achievement_details)} achievements for {game_name}")
+            logger.info(f"{app_id} - Found {len(achievement_details)} achievements for {game_name}")
 
             for language in languages:
                 if language == "english":
                     continue
-                print(f"\t\t{app_id} - Getting achievements data for {game_name} in {language}...")
+                logger.info(f"{app_id} - Getting achievements data for {game_name} in {language}...")
                 achievements_tmp = pandas.DataFrame(get_player_achievements(app_id, language))
                 if language in languages_code.keys():
                     merged[f"description_{languages_code[language]}"] = achievements_tmp["description"]
@@ -135,7 +139,7 @@ def process_games(games):
             if not os.path.exists(f"outputs/{app_id}/AchievementIcons"):
                 os.mkdir(f"outputs/{app_id}/AchievementIcons")
 
-            print(f"\t{app_id} - Processing achievement icons for {game_name}...")
+            logger.info(f"{app_id} - Processing achievement icons for {game_name}...")
             icon_hashes = merged["iconHash"].tolist() + merged["icongrayHash"].tolist()
             icon_threading_size = math.ceil(len(icon_hashes) / icon_threading_num)
             splitted_icon_hashes = [icon_hashes[i:i + icon_threading_size] for i in range(0, len(icon_hashes), icon_threading_size)]
@@ -150,9 +154,9 @@ def process_games(games):
             merged.to_json(f"outputs/{app_id}/Achievements.json", orient="records", indent=4, force_ascii=False)
             merged.to_csv(f"outputs/{app_id}/Achievements.csv", index=False)
 
-            print(f"\t{app_id} - Finished getting data for {game_name}")
+            logger.info(f"{app_id} - Finished getting data for {game_name}")
         except Exception as e:
-            print(f"\t{app_id} - Failed to process game for {game_name}: {e}")
+            logger.error(f"{app_id} - Failed to process game for {game_name}: {e}")
 
 
 start = datetime.datetime.now()
@@ -160,11 +164,11 @@ if not os.path.exists("outputs"):
     os.mkdir("outputs")
 
 # Get all games
-print("Getting owned games...")
+logger.info("Getting owned games...")
 games = get_owned_game()
 games = list(filter(lambda x: x["playtime_forever"] > played_minutes_threshold, games))
 games.sort(key=lambda x: x["playtime_forever"], reverse=True)
-print(f"Found {len(games)} games played over {played_minutes_threshold} minutes.")
+logger.info(f"Found {len(games)} games played over {played_minutes_threshold} minutes.")
 
 game_threading_size = math.ceil(len(games) / game_threading_num)
 splitted_games = [games[i:i + game_threading_size] for i in range(0, len(games), game_threading_size)]
@@ -176,7 +180,7 @@ for s_games in splitted_games:
 for t in game_threads:
     t.join()
 
-print(f"Processing games info table.")
+logger.info(f"Processing games info table.")
 games_info = pandas.DataFrame(games)[["appid", "name", "playtime_forever", "img_icon_url", "rtime_last_played"]]
 
 # Check if we have previous data
@@ -200,7 +204,7 @@ else:
 games_info.to_json(f"outputs/GamesInfo.json", orient="records", indent=4, force_ascii=False)
 games_info.to_csv(f"outputs/GamesInfo.csv", index=False)
 
-print("Finished generate or update games info table.")
+logger.info(f"Finished generate or update {len(games)} games info table.")
 
 end = datetime.datetime.now()
-print(f"All Done. Total time: {end - start}")
+logger.info(f"All Done. Total time: {end - start}")
