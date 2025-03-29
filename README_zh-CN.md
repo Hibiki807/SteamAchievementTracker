@@ -65,4 +65,4 @@ user_id = "YourUserId"
 ## 参考资料
 
 - Steam API 文档：https://developer.valvesoftware.com/wiki/Steam_Web_API#Implementations
-- Steam Language code 文档：https://developer.valvesoftware.com/wiki/Steam_Condenser
+- Steam Language code 文档：https://partner.steamgames.com/doc/store/localization/languages

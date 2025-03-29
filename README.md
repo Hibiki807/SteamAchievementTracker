@@ -65,4 +65,4 @@ Run
 ## Reference
 
 - Steam API doc：https://developer.valvesoftware.com/wiki/Steam_Web_API#Implementations
-- Steam Language code doc：https://developer.valvesoftware.com/wiki/Steam_Condenser
+- Steam Language code doc：https://partner.steamgames.com/doc/store/localization/languages
