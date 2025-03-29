@@ -89,7 +89,6 @@ def download_achievement_icon(game_name, app_id, hashs):
             logger.error(f"{app_id} - Failted to fetch achievement icon for {game_name} with hash {hash}")
 
 
-# TODO: Add log for exception
 def process_games(games):
     for game in games:
         try:
